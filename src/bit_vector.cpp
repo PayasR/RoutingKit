@@ -44,7 +44,14 @@ namespace {
 	typedef uint64_t v8_uint64_t __attribute__((vector_size(64)));
 	#else
 	struct v8_uint64_t{
-		uint64_t v[8] = {0};
+		v8_uint64_t(){}
+		
+		v8_uint64_t(unsigned x){
+			for(unsigned i=0; i<8; ++i)
+				v[i] = x;
+		}
+
+		uint64_t v[8];
 		void operator^=(v8_uint64_t o){
 			for(unsigned i=0; i<8; ++i)
 				v[i] ^= o.v[i];
@@ -102,9 +109,7 @@ namespace {
 	}
 
 	v8_uint64_t get_padding_mask(uint64_t size){
-		v8_uint64_t u;
-
-		u ^= u; // u.v = 0
+		v8_uint64_t u = {0};
 
 		uint64_t x = size % 512;
 		uint8_t i = 0;
@@ -150,6 +155,7 @@ namespace {
 		return u[0] == ~0ull;
 	}
 
+	#ifndef NDEBUG
 	bool are_all_padding_bits_zero(const BitVector&v){
 		if(v.size() % 512 == 0){
 			return true;
@@ -159,6 +165,7 @@ namespace {
 			return !is_any_bit_set(&x);
 		}
 	}
+	#endif
 }
 
 BitVector::BitVector():
@@ -188,8 +195,7 @@ BitVector::BitVector(uint64_t size, bool init_value)
 			throw std::bad_alloc();
 		size_ = size;
 
-		v8_uint64_t init_vec;
-		init_vec ^= init_vec;
+		v8_uint64_t init_vec = {0};
 		assert(init_vec[0] == 0ull);
 		if(init_value)
 			init_vec = ~init_vec;
@@ -329,8 +335,8 @@ void BitVector::resize(uint64_t new_size, bool value){
 			if(value){
 				*(j-1) |= ~get_padding_mask(size_);
 
-				v8_uint64_t all_one;
-				all_one ^= ~all_one;
+				v8_uint64_t all_one = {0};
+				all_one = ~all_one;
 
 				while(j < (v8_uint64_t*)o.data_ + get_v8_uint64_count(o.size_)){
 					*j = all_one;
@@ -340,8 +346,7 @@ void BitVector::resize(uint64_t new_size, bool value){
 				*(j-1) &= get_padding_mask(o.size_);
 				assert(are_all_padding_bits_zero(o));
 			}else{
-				v8_uint64_t all_zero;
-				all_zero ^= all_zero;
+				v8_uint64_t all_zero = {0};
 
 				while(j < (v8_uint64_t*)o.data_ + get_v8_uint64_count(o.size_)){
 					*j = all_zero;
@@ -394,7 +399,7 @@ uint64_t BitVector::population_count() const{
 }
 
 void BitVector::set_all(){
-	v8_uint64_t x = {};
+	v8_uint64_t x = {0};
 	x = ~x;
 	for(v8_uint64_t*i = (v8_uint64_t*)data_; i<((v8_uint64_t*)data_)+get_v8_uint64_count(size_); ++i)
 		*i = x;
@@ -402,14 +407,14 @@ void BitVector::set_all(){
 }
 
 void BitVector::reset_all(){
-	v8_uint64_t x = {};	
+	v8_uint64_t x = {0};	
 	for(v8_uint64_t*i = (v8_uint64_t*)data_; i<((v8_uint64_t*)data_)+get_v8_uint64_count(size_); ++i)
 		*i = x;
 	assert(are_all_padding_bits_zero(*this));
 }
 
 void BitVector::set_all(bool value){
-	v8_uint64_t x = {};
+	v8_uint64_t x = {0};
 	if(value)
 		x = ~x;
 		
@@ -426,8 +431,7 @@ bool BitVector::are_all_set()const{
 	if(__builtin_expect(size_ == 0, false))
 		return true;
 
-	v8_uint64_t x;
-	x ^= x;
+	v8_uint64_t x = {0};
 	x = ~x;
 
 	uint64_t n = get_v8_uint64_count(size_);
@@ -445,8 +449,7 @@ bool BitVector::is_any_set()const{
 	if(__builtin_expect(size_ == 0, false))
 		return false;
 
-	v8_uint64_t x;
-	x ^= x;
+	v8_uint64_t x = {0};
 	
 	for(v8_uint64_t*i = (v8_uint64_t*)data_; i<((v8_uint64_t*)data_)+get_v8_uint64_count(size_); ++i)
 		x |= *i;
@@ -498,9 +501,7 @@ bool operator==(const BitVector&l, const BitVector&r){
 	if(__builtin_expect(l.size_ != r.size_, false))
 		return false;
 
-	v8_uint64_t x;
-	
-	x ^= x; // set all bits
+	v8_uint64_t x = {0};
 
 	for(v8_uint64_t*i = (v8_uint64_t*)l.data_, *j=(v8_uint64_t*)r.data_; i<((v8_uint64_t*)l.data_)+get_v8_uint64_count(l.size_); ++i, ++j){
 		x |= (*i ^ *j);

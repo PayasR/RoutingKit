@@ -22,19 +22,9 @@ public:
 
 	~BufferedAsynchronousReader();
 
-	unsigned how_many_bytes_are_in_the_buffer() const;
-	bool were_all_bytes_read() const;
-	bool is_finished() const;
-	void wait_until_buffer_is_non_empty_or_all_bytes_were_read() const;
-
 	char* read(unsigned size);
 	char* read_or_throw(unsigned size);
 
-	template<class T>
-	T read_or_throw(){
-		return *(T*)read_or_throw(sizeof(T));
-	}
-	
 private:
 	struct Impl;
 	std::unique_ptr<Impl>impl;

@@ -1,6 +1,6 @@
 #include <routingkit/timer.h>
+#include <routingkit/osm_decoder.h>
 
-#include "osm_pbf_decoder.h"
 #include "buffered_asynchronous_reader.h"
 #include "file_data_source.h"
 #include "protobuf.h"
@@ -11,24 +11,33 @@
 #include <iomanip>
 #include <sstream>
 #include <algorithm>
+#include <atomic>
 #include <string.h>
 
-// The following includes are only there to get access to ntohl. Nothing else is 
-// used from the networking headers. If someone has a good idea of how to 
-// implement ntohl in a portable way that 
+// The following includes are only there to get access to ntohl. Nothing else is
+// used from the networking headers. If someone has a good idea of how to
+// implement ntohl in a portable way that
 // (a) runs on big endian machines
 // (b) runs on a semi-recent MSVC
 // (c) does the endian check at compile time
 // then please open an issue and tell me how.
 //
-// Another option would be to drop support for big-endian hosts. I know of no 
+// Another option would be to drop support for big-endian hosts. I know of no
 // recent architecture that uses big-endian. Maybe this will happen sometime in
 // the future.
 #ifdef ROUTING_KIT_NO_POSIX
-// Currently, we assume that everything that is not POSIX is Windows. 
-// If you have an architecture for which this logic is not good enough, please 
-// open an issue. 
-#include <winsock2.h> 
+#ifdef _WIN32 // _WIN64 being defined implies _WIN32
+#include <winsock2.h>
+#else
+// Currently, we assume that everything that is neither POSIX nor Windows, is little endian.
+static uint32_t ntohl(uint32_t netlong){
+	return
+		(netlong << 24) |
+		((netlong << 16) >> 8) |
+		((netlong << 8) >> 16) |
+		(netlong >> 24);
+}
+#endif
 #else
 #include <netinet/in.h>
 #endif
@@ -38,6 +47,25 @@
 namespace RoutingKit{
 
 namespace{
+
+	// formally
+	//
+	// char*p = ...;
+	// uint32_t x = *((uint32_t*)p);
+	//
+	// is undefined behavior. We therefore use memcpy.
+
+	template<class T>
+	void unaligned_store(char*dest, const T&val){
+		memcpy(dest, (const char*)&val, sizeof(T));
+	}
+
+	template<class T>
+	T unaligned_load(const char*src){
+		T ret;
+		memcpy((char*)&ret, src, sizeof(T));
+		return ret; // NVRO
+	}
 
 	const uint64_t is_header_info_available_bit = 1;
 	const uint64_t is_ordered_bit = 2;
@@ -55,7 +83,7 @@ namespace{
 		unsigned long long minimum_read_size() const {
 			return (64 << 20);
 		}
-		
+
 		uint64_t get_status() const {
 			return status;
 		}
@@ -63,9 +91,6 @@ namespace{
 		std::function<unsigned long long(char*, unsigned long long)> get_read_function_object(){
 			return [&](char*buffer, unsigned long long how_much_to_read)->unsigned long long{
 				assert(how_much_to_read >= minimum_read_size());
-				reader.wait_until_buffer_is_non_empty_or_all_bytes_were_read();
-				if(reader.is_finished())
-					return 0;
 
 				const char*blob_begin, *blob_end;
 
@@ -73,13 +98,13 @@ namespace{
 					char*p = reader.read(4);
 					if(p == nullptr)
 						return 0;
-					
 
-					uint32_t header_size = ntohl(*((uint32_t*)p));
+
+					uint32_t header_size = ntohl(unaligned_load<uint32_t>(p));
 
 					uint32_t data_size = (uint32_t)-1;
 
-					
+
 					char block_type[16] = "";
 
 					const char*buffer = reader.read_or_throw(header_size);
@@ -94,7 +119,7 @@ namespace{
 							if(key_id == 1){
 								unsigned len = str_end - str_begin;
 								if(len > sizeof(block_type)-1)
-									len = sizeof(block_type);
+									len = sizeof(block_type)-1;
 								memcpy(block_type, str_begin, len);
 								block_type[len] = '\0';
 							}
@@ -178,7 +203,7 @@ namespace{
 						throw std::runtime_error("PBF error: Blob is too large. It is "+std::to_string(uncompressed_data_size) + " but may be at most "+std::to_string(how_much_to_read-4));
 					if(uncompressed_data_size != (std::uint64_t)(uncompressed_end - uncompressed_begin))
 						throw std::runtime_error("PBF error: claimed uncompressed blob size does not correspond to actual blob size");
-					*(uint32_t*)buffer = uncompressed_data_size;
+					unaligned_store<uint32_t>(buffer, uncompressed_data_size);
 					buffer += 4;
 					memcpy(buffer, uncompressed_begin, uncompressed_data_size);
 					return uncompressed_data_size + 4;
@@ -187,7 +212,7 @@ namespace{
 					if(uncompressed_data_size > how_much_to_read-4)
 						throw std::runtime_error("PBF error: Blob is too large. It is "+std::to_string(uncompressed_data_size) + " but may be at most "+std::to_string(how_much_to_read-4));
 
-					*(uint32_t*)buffer = uncompressed_data_size;
+					unaligned_store<uint32_t>(buffer, uncompressed_data_size);
 					buffer += 4;
 
 					z_stream z;
@@ -239,10 +264,13 @@ namespace {
 
 		std::vector<std::pair<const char*, const char*>>group_list;
 
-		while(!reader.is_finished()){
+		for(;;){
 			char*primblock_begin, *primblock_end;
 			{
-				uint32_t s = reader.read_or_throw<uint32_t>();
+				char*s_ptr = reader.read(4);
+				if(s_ptr == nullptr)
+					break;
+				uint32_t s = unaligned_load<uint32_t>(s_ptr);
 				primblock_begin = reader.read_or_throw(s);
 				primblock_end = primblock_begin + s;
 			}
@@ -344,7 +372,7 @@ namespace {
 							throw std::runtime_error("PBF error: key string ID is out of bounds.");
 						return string_table[i];
 					},
-					[&](uint64_t i){	
+					[&](uint64_t i){
 						i = value_list[i];
 						if(i > string_table.size())
 							throw std::runtime_error("PBF error: value string ID is out of bounds.");
@@ -361,7 +389,7 @@ namespace {
 					*key_value_pairs_begin = nullptr, *key_value_pairs_end = nullptr,
 					*latitude_begin = nullptr, *latitude_end = nullptr,
 					*longitude_begin = nullptr, *longitude_end = nullptr;
-				
+
 				decode_protobuf_message_with_callbacks(
 					begin, end,
 					[&](uint64_t key_id, uint64_t num){},
@@ -417,7 +445,7 @@ namespace {
 									throw std::runtime_error("PBF error: key string ID is out of bounds.");
 								return string_table[i];
 							},
-							[&](uint64_t i){	
+							[&](uint64_t i){
 								i = value_list[i];
 								if(i > string_table.size())
 									throw std::runtime_error("PBF error: value string ID is out of bounds.");
@@ -487,7 +515,7 @@ namespace {
 							throw std::runtime_error("PBF error: key string ID is out of bounds.");
 						return string_table[i];
 					},
-					[&](uint64_t i){	
+					[&](uint64_t i){
 						i = value_list[i];
 						if(i > string_table.size())
 							throw std::runtime_error("PBF error: value string ID is out of bounds.");
@@ -567,7 +595,7 @@ namespace {
 							throw std::runtime_error("PBF error: key string ID is out of bounds.");
 						return string_table[i];
 					},
-					[&](uint64_t i){	
+					[&](uint64_t i){
 						i = value_list[i];
 						if(i > string_table.size())
 							throw std::runtime_error("PBF error: value string ID is out of bounds.");
@@ -653,11 +681,12 @@ void ordered_read_osm_pbf(
 
 	if(!file_is_ordered_even_though_file_header_says_that_it_is_unordered){
 		while((decompressor.get_status() & is_header_info_available_bit) == 0){
+			std::atomic_thread_fence(std::memory_order::memory_order_seq_cst);
 			std::this_thread::yield();
 		}
 	}
-	
-	
+
+
 	if(file_is_ordered_even_though_file_header_says_that_it_is_unordered || (decompressor.get_status() & is_ordered_bit) != 0){
 		internal_read_osm_pbf(reader, node_callback, way_callback, relation_callback, log_message);
 	} else {
@@ -695,7 +724,7 @@ void speedtest_osm_pbf_reading(
 	std::function<void(std::string)>log_message
 ){
 	log_message("Starting scan speedtest");
-	
+
 	uint64_t node_count = 0;
 	uint64_t way_count = 0;
 	uint64_t rel_count = 0;

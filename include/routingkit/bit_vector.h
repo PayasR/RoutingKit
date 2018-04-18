@@ -5,12 +5,6 @@
 #include <assert.h>
 #include <utility>
 
-#ifdef ROUTING_KIT_NO_GCC_EXTENSIONS
-#ifndef __attribute__
-#define __attribute__(A) /* do nothing */
-#endif
-#endif
-
 namespace RoutingKit{
 
 class BitVector{
@@ -37,34 +31,58 @@ public:
 	void make_large_enough_for(uint64_t x, Uninitialized);
 	void make_large_enough_for(uint64_t x, bool init_value = false);
 
-	bool is_set(uint64_t x)const __attribute__((always_inline)) {
+	bool is_set(uint64_t x)const{
 		assert(x < size_ && "argument out of bounds");
-		return data_[x/64] & (1ull << (x%64));
+		uint64_t a = x/64;
+	    uint64_t b = x%64;
+		uint64_t d = data_[a];
+		return d & (1ull << b);
 	}
 
-	void set(uint64_t x) __attribute__((always_inline)) {
+	void set(uint64_t x){
 		assert(x < size_ && "argument out of bounds");
-		data_[x/64] |= (1ull << (x%64));
+		uint64_t a = x/64;
+	    uint64_t b = x%64;
+		uint64_t d = data_[a];
+		d |= (1ull << b);
+		data_[a] = d;
 	}
 
-	void set_if(uint64_t x, bool value) __attribute__((always_inline)) {
+	void set_if(uint64_t x, bool value){
 		assert(x < size_ && "argument out of bounds");
-		data_[x/64] |= ((uint64_t)value << (x%64));
+		uint64_t a = x/64;
+	    uint64_t b = x%64;
+		uint64_t d = data_[a];
+		d |= ((uint64_t)value << b);
+		data_[a] = d;
 	}
 
-	void set(uint64_t x, bool value) __attribute__((always_inline)) {
+	void set(uint64_t x, bool value){
 		assert(x < size_ && "argument out of bounds");
-		data_[x/64] ^= (((uint64_t)(-(int64_t)value))^data_[x/64]) & (1ull<<(x%64));
+		uint64_t a = x/64;
+	    uint64_t b = x%64;
+		uint64_t d = data_[a];
+		d &= ~(1ull << b);
+		d |= ((uint64_t)value << b);
+		data_[a] = d;
 	}
 
-	void reset(uint64_t x) __attribute__((always_inline)) {
+	void reset(uint64_t x){
 		assert(x < size_ && "argument out of bounds");
-		data_[x/64] &= ~(1ull << (x%64));
+		uint64_t a = x/64;
+	    uint64_t b = x%64;
+		uint64_t d = data_[a];
+		d &= ~(1ull << b);
+		data_[a] = d;
 	}
 
-	void toggle(uint64_t x) __attribute__((always_inline)) {
+	void toggle(uint64_t x){
 		assert(x < size_ && "argument out of bounds");
-		data_[x/64] ^= (1ull << (x%64));
+		uint64_t a = x/64;
+	    uint64_t b = x%64;
+		uint64_t d = data_[a];
+		d ^= (1ull << b);
+		data_[a] = d;
 	}
 
 	void set_all();
@@ -114,17 +132,17 @@ inline BitVector make_bit_vector(uint64_t size, const F&f){
 inline BitVector operator|(BitVector&&l, BitVector&&r) { l |= r; return std::move(l); }
 inline BitVector operator|(BitVector&&l, const BitVector&r) { l |= r; return std::move(l); }
 inline BitVector operator|(const BitVector&l, BitVector&&r) { r |= l; return std::move(r); }
-inline BitVector operator|(const BitVector&l, const BitVector&r) { BitVector x = l; x |= r; return std::move(x); }
+inline BitVector operator|(const BitVector&l, const BitVector&r) { BitVector x = l; x |= r; return x; }
 
 inline BitVector operator&(BitVector&&l, BitVector&&r) { l &= r; return std::move(l); }
 inline BitVector operator&(BitVector&&l, const BitVector&r) { l &= r; return std::move(l); }
 inline BitVector operator&(const BitVector&l, BitVector&&r) { r &= l; return std::move(r); }
-inline BitVector operator&(const BitVector&l, const BitVector&r) { BitVector x = l; x &= r; return std::move(x); }
+inline BitVector operator&(const BitVector&l, const BitVector&r) { BitVector x = l; x &= r; return x; }
 
 inline BitVector operator^(BitVector&&l, BitVector&&r) { l ^= r; return std::move(l); }
 inline BitVector operator^(BitVector&&l, const BitVector&r) { l ^= r; return std::move(l); }
 inline BitVector operator^(const BitVector&l, BitVector&&r) { r ^= l; return std::move(r); }
-inline BitVector operator^(const BitVector&l, const BitVector&r) { BitVector x = l; x ^= r; return std::move(x); }
+inline BitVector operator^(const BitVector&l, const BitVector&r) { BitVector x = l; x ^= r; return x; }
 
 inline bool operator!=(const BitVector&l, const BitVector&r){ return !(l == r); }
 inline bool operator>(const BitVector&l, const BitVector&r){ return r < l; }

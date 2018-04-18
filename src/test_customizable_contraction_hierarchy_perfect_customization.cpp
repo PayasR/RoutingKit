@@ -108,7 +108,7 @@ int main(int argc, char*argv[]){
 			dist_time_sum += time;
 
 			if(ch_query.get_distance() != ref_distance[i])
-				throw runtime_error("Distance query is wrong");
+				throw runtime_error("Distance query "+std::to_string(i)+" is wrong; reference = "+std::to_string(ref_distance[i])+" computed = "+std::to_string(ch_query.get_distance()));
 
 			time = -get_micro_time();
 			auto node_path = ch_query.get_node_path();
@@ -165,6 +165,8 @@ int main(int argc, char*argv[]){
 		cout << "avg node path running time : " << node_path_time_sum/query_count << "musec" << endl;
 	}catch(exception&err){
 		cerr << "Stopped on exception : " << err.what() << endl;
+		return 1;
 	}
+	return 0;
 }
 

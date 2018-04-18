@@ -1,5 +1,7 @@
 # RoutingKit
 
+[![Build Status](https://travis-ci.org/RoutingKit/RoutingKit.svg?branch=master)](https://travis-ci.org/RoutingKit/RoutingKit)
+
 RoutingKit is a C++ library that provides advanced route planning functionality. 
 It was developed at [KIT](https://www.kit.edu) in the [group of Prof. Dorothea Wagner](https://i11www.iti.kit.edu/).
 The most prominent component is an index-based data structure called (Customizable) Contraction Hierarchy, that allows to answer shortest path queries within milliseconds or even less on data sets of continental size while keeping the arc weights flexible.
@@ -57,7 +59,7 @@ int main(){
 		auto path = ch_query.get_node_path();
 		long long end_time = get_micro_time();
 
-		cout << "To get from "<< from << " to "<< to << " one needs " << distance << " seconds." << endl;
+		cout << "To get from "<< from << " to "<< to << " one needs " << distance << " milliseconds." << endl;
 		cout << "This query was answered in " << (end_time - start_time) << " microseconds." << endl;
 		cout << "The path is";
 		for(auto x:path)
@@ -67,9 +69,11 @@ int main(){
 }
 ```
 
-You can get OSM PBF exports from various sources. A popular one is [Geofabrik](https://download.geofabrik.de/).
+You can get OSM PBF exports from various sources. A popular one is [Geofabrik](https://download.geofabrik.de/). Another one is [Mapzen](https://mapzen.com/data/metro-extracts/).
 
 ## Documentation
+
+The functions of RoutingKit are made available using different headers. This allows for a fine-grained control over what is made available and what not. The exact headers are available from the documentation. For cases where this fine-grained control is not necessary, RoutingKit provides the `<routingkit/all.h>` header, which includes everything. All functionality is in the `RoutingKit` namespace.
 
 * [Setup and Installation](doc/Setup.md)
 * [Support Functionality](doc/SupportFunctions.md)
